@@ -1,4 +1,4 @@
-# VM - KOB Benchmarks
+# VM - Container Benchmarks
 ## Benchmark list 
 
 - **CPU:** LINPACK (HPL)
