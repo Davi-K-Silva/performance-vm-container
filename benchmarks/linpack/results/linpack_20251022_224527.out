@@ -1,0 +1,31 @@
+ Please send the results of this run to:
+
+ Jack J. Dongarra
+ Computer Science Department
+ University of Tennessee
+ Knoxville, Tennessee 37996-1300
+
+ Fax: 865-974-8296
+
+ Internet: dongarra@cs.utk.edu
+
+ This is version 29.5.04.
+
+     norm. resid      resid           machep         x(1)          x(n)
+  2.66762500E+01  8.88497609E-12  2.22044605E-16  1.00000000E+00  1.00000000E+00
+
+
+    times are reported for matrices of order  3000
+      dgefa      dgesl      total     mflops       unit      ratio       b(1)
+ times for array with leading dimension of3001
+  4.076E+00  4.749E-03  4.080E+00  4.416E+03  4.529E-04  7.286E+01  1.144E-12
+  4.062E+00  4.639E-03  4.067E+00  4.431E+03  4.514E-04  7.262E+01  1.000E+00
+  3.982E+00  4.695E-03  3.987E+00  4.519E+03  4.426E-04  7.120E+01  1.000E+00
+  3.679E+00  3.609E-03  3.683E+00  4.892E+03  4.088E-04  6.577E+01  5.783E+10
+
+ times for array with leading dimension of3000
+  3.638E+00  4.372E-03  3.642E+00  4.947E+03  4.043E-04  6.504E+01  1.000E+00
+  3.621E+00  4.364E-03  3.626E+00  4.970E+03  4.024E-04  6.474E+01  1.000E+00
+  3.623E+00  4.372E-03  3.628E+00  4.967E+03  4.027E-04  6.478E+01  1.000E+00
+  3.627E+00  3.558E-03  3.631E+00  4.962E+03  4.030E-04  6.484E+01  5.783E+10
+  end of tests -- this version dated 05/29/04
