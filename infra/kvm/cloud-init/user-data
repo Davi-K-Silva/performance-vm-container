@@ -1,0 +1,12 @@
+#cloud-config
+hostname: ubuntu24
+manage_etc_hosts: true
+users:
+  - name: ubuntu
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash
+    ssh_authorized_keys:
+      - ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQDQm0eJXFy3/T84vtXEu0pepIzDZisF9OovStJKJUW5OycpbFuYEQk94/jW4NteQLy+2FjSAzx2BJ4nisOyrGCgQHA9N46zRS6KWHuZh4aWU4VxJGi65TowCOYMVBY+to8E1DfcnHkiu9ZIZ/Cl5M5qqaoIWz3ICgzvNjoBkjAOhRLH+/aVWv11P4wN4VTF2uXS74HDZqr4re9Xnjsj0/mhinil+e18p/z6woDOtU5dAPQGmfFNbfWDsbWQhZt5kLaeiCDryycnf4XHnqfmKnWKwro5P/4BaFRHCspo86UegJ79YJNzapIG6SS5nZ+PtZG47zXphHyiRkEYJciB1ABWIb93yfDw4UZKjuOfPRqMNkcF1QYT547AOYOv/VlgP93dJ/4egnMjDrnWAm3xAOBiL5D2V6NZn96Er8LyeYIMtcLRuAZcZxXf9//cKC6R9oLdv854nFL6pHkD5d1aE0i8XP/vBXY/vXOqOD2iJKksAV3B6kiEBdwQdJb8FonKmRrsPhIEiRVEDyG5f1DwvYNqiattOGZFjqUtfaTqc9UvT29PKRIxX+oT5bUbgiWjv7bqEecRiVU5RPTMtPYiajcykan8snji5p2YUgPlBwWimQXw4t6miYJKuDfjo972r3WlkZBQMyAbkmmCdwkWFONfF3iLkPXQEkEHTvvhZTlYqw== ci@ubuntuserver
+package_update: true
+package_upgrade: true
+
