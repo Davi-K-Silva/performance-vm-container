@@ -1,4 +1,4 @@
-### C ###
+## C ###
 # Prerequisites
 *.d
 
@@ -68,5 +68,8 @@ dkms.conf
 
 # Compiled Static libraries
 *.lai
+
+# Result dirs 
+**/results/
 
 # Executables
