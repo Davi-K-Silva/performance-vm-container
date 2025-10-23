@@ -1,12 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-echo "==> Building and installing FIO from source..."
+echo "==> Building FIO"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR/content"
-
-cd content
 
 echo "==> Running make..."
 make -j"$(nproc)"
