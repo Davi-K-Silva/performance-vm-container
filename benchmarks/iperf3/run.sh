@@ -41,5 +41,5 @@ if [[ "${SERVER_PID:-}" != "" ]]; then
 fi
 
 echo
-echo "✅ Benchmark complete. Results saved to: $OUTFILE"
+echo "Benchmark complete. Results saved to: $OUTFILE"
 
