@@ -3,9 +3,11 @@ ubuntu24.qcow2
 seed.iso
 mlc-run-script-versions.json
 version_info.json
+.mlc-log.txt
 
 ## Dirss ##
 mlc/
+hardware/
 
 ## C ###
 # Prerequisites
