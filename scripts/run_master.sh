@@ -17,7 +17,7 @@
 # Env:
 #   BENCH_DIR               Override benchmarks directory (default: <repo>/benchmarks)
 
-set -uo pipefail
+set -Eeuo pipefail
 
 # --- defaults ---
 REPEAT=1
@@ -60,7 +60,6 @@ while [[ $# -gt 0 ]]; do
     -h|--help)
       print_help; exit 0 ;;
     *)
-      # treat as additional bench names (space-separated)
       EXPLICIT_BENCHES+=("$1"); shift ;;
   esac
 done
@@ -75,13 +74,23 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 BENCH_DIR="${BENCH_DIR:-$REPO_ROOT/benchmarks}"
+
 if [[ ! -d "$BENCH_DIR" ]]; then
   echo "ERROR: Benchmarks directory not found: $BENCH_DIR" >&2
   exit 1
 fi
 
+PREPARE_ENV_SH="$SCRIPT_DIR/prepare_env.sh"
+if [[ ! -x "$PREPARE_ENV_SH" ]]; then
+  echo "ERROR: prepare_env.sh not found or not executable: $PREPARE_ENV_SH" >&2
+  exit 1
+fi
+
 # --- discover benches ---
-mapfile -d '' ALL_BENCH_DIRS < <(find "$BENCH_DIR" -mindepth 1 -maxdepth 1 -type d -print0 | sort -z)
+mapfile -d '' ALL_BENCH_DIRS < <(
+  find "$BENCH_DIR" -mindepth 1 -maxdepth 1 -type d -print0 | sort -z
+)
+
 ALL_BENCHES=()
 for p in "${ALL_BENCH_DIRS[@]}"; do
   [[ -z "$p" ]] && continue
@@ -90,35 +99,37 @@ done
 
 if [[ "${LIST_ONLY:-0}" -eq 1 ]]; then
   echo "Available benchmarks in $BENCH_DIR:"
-  for b in "${ALL_BENCHES[@]}"; do echo "  - $b"; done
+  for b in "${ALL_BENCHES[@]}"; do
+    echo "  - $b"
+  done
   exit 0
 fi
 
-# selection
+# --- selection ---
 SELECTED=()
 if (( SELECT_ALL )); then
   SELECTED=("${ALL_BENCHES[@]}")
 elif ((${#EXPLICIT_BENCHES[@]})); then
-  # accept spaces inside --bench and positional items; split any with whitespace
   TMP=()
   for x in "${EXPLICIT_BENCHES[@]}"; do
     for y in $x; do TMP+=("$y"); done
   done
-  # de-dup while preserving order
+
   declare -A seen=()
   for b in "${TMP[@]}"; do
-    if [[ -n "${seen[$b]:-}" ]]; then continue; fi
+    [[ -n "${seen[$b]:-}" ]] && continue
     seen[$b]=1
     SELECTED+=("$b")
   done
 else
-  echo "ERROR: choose benchmarks with --all or --bench name1[,name2...] (or positional names)." >&2
+  echo "ERROR: choose benchmarks with --all or --bench name1[,name2...]" >&2
   exit 2
 fi
 
-# validate selected exist
+# --- validate selection ---
 VALID=()
 MISSING=()
+
 for b in "${SELECTED[@]}"; do
   if [[ -d "$BENCH_DIR/$b" ]]; then
     VALID+=("$b")
@@ -126,33 +137,34 @@ for b in "${SELECTED[@]}"; do
     MISSING+=("$b")
   fi
 done
+
 if ((${#MISSING[@]})); then
   echo "WARNING: missing benchmark dirs (skipping): ${MISSING[*]}" >&2
 fi
-if ((${#VALID[@]}==0)); then
+
+if ((${#VALID[@]} == 0)); then
   echo "ERROR: no valid benchmarks to run." >&2
   exit 1
 fi
 
-# --- results root and aggregate dir ---
+# --- results root ---
 TIMESTAMP="$(date +"%Y%m%d_%H%M%S")"
 RESULTS_ROOT="${OUT_DIR:-$REPO_ROOT/results}"
 AGG_DIR="$RESULTS_ROOT/$TIMESTAMP"
+
 if (( DRY_RUN )); then
   echo "DRY-RUN: would create results dir: $AGG_DIR"
 else
   mkdir -p "$AGG_DIR"
 fi
 
-# choose copy tool
+# --- copy tool ---
 COPY_TOOL="cp"
-if command -v rsync >/dev/null 2>&1; then
-  COPY_TOOL="rsync"
-fi
+command -v rsync >/dev/null 2>&1 && COPY_TOOL="rsync"
 
-# trackers
-declare -a OK_LIST=()
-declare -a FAIL_LIST=()
+# --- trackers ---
+OK_LIST=()
+FAIL_LIST=()
 
 echo "==> Benchmarks root: $BENCH_DIR"
 echo "==> Results aggregate: $AGG_DIR"
@@ -168,7 +180,7 @@ for b in "${VALID[@]}"; do
   if [[ ! -f "$RUN_SH" ]]; then
     echo "--> [$b] No run.sh found. Skipping."
     FAIL_LIST+=("$b (no run.sh)")
-    (( STOP_ON_ERROR )) && { echo "Stopping due to --stop-on-error."; break; }
+    (( STOP_ON_ERROR )) && break
     continue
   fi
 
@@ -176,18 +188,24 @@ for b in "${VALID[@]}"; do
     printf "\n--> [%s] Run %03d/%03d\n" "$b" "$i" "$REPEAT"
 
     if (( DRY_RUN )); then
+      echo "DRY-RUN: bash \"$PREPARE_ENV_SH\""
       echo "DRY-RUN: bash \"$RUN_SH\""
     else
+      if ! bash "$PREPARE_ENV_SH"; then
+        echo "<-- [$b] prepare_env.sh FAILED (run $i)" >&2
+        FAIL_LIST+=("$b (prepare_env run $i)")
+        (( STOP_ON_ERROR )) && break 2
+        continue
+      fi
+
       if ! bash "$RUN_SH"; then
         echo "<-- [$b] Run $i FAILED" >&2
         FAIL_LIST+=("$b (run $i)")
-        (( STOP_ON_ERROR )) && { echo "Stopping due to --stop-on-error."; break 2; }
-        # continue to next run/bench
+        (( STOP_ON_ERROR )) && break 2
         continue
       fi
     fi
 
-    # aggregate copy
     DEST="$AGG_DIR/$b/run-$(printf '%03d' "$i")"
     if (( DRY_RUN )); then
       echo "DRY-RUN: would aggregate from \"$BENCH_RESULTS\" to \"$DEST\""
@@ -197,20 +215,18 @@ for b in "${VALID[@]}"; do
         if [[ "$COPY_TOOL" == "rsync" ]]; then
           rsync -a --delete "$BENCH_RESULTS"/ "$DEST"/
         else
-          # cp fallback; no --delete equivalent
           cp -a "$BENCH_RESULTS"/. "$DEST"/ 2>/dev/null || true
         fi
       else
-        echo "NOTE: [$b] results dir not found at '$BENCH_RESULTS' (benchmark may not produce files)." >&2
+        echo "NOTE: [$b] results dir not found at '$BENCH_RESULTS'" >&2
       fi
     fi
   done
 
-  # if we got here without failing all repeats, mark as OK
   OK_LIST+=("$b")
 done
 
-# --- write summary file ---
+# --- summary file ---
 if (( DRY_RUN )); then
   echo "DRY-RUN: would write summary to $AGG_DIR/summary.txt"
 else
@@ -236,6 +252,5 @@ echo "Failed: ${#FAIL_LIST[@]}"
 ((${#FAIL_LIST[@]})) && printf '  - %s\n' "${FAIL_LIST[@]}"
 echo "============================================="
 
-# exit code: 1 if any failures
 (( ${#FAIL_LIST[@]} )) && exit 1 || exit 0
 

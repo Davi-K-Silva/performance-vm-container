@@ -1,4 +1,4 @@
-!/usr/bin/env bash
+#!/usr/bin/env bash
 # prepare_env.sh — clean caches, check ACPI, set CPUs to performance + constant freq
 set -euo pipefail
 
