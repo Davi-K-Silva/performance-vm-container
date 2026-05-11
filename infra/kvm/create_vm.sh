@@ -1,112 +1,71 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Usage: ./create_vm.sh [vcpus] [ram_MB]
-# Example: ./create_vm.sh 4 8192
-
-VM_NAME="ubuntu24"
+VM_NAME="ubuntu24-study"
 IMG_DIR="/var/lib/libvirt/images"
-
-# Local base image path (qcow2). If it doesn't exist, we'll fetch and convert it.
 BASE_IMG="./ubuntu24.qcow2"
-
-# Cloud-init files dir (must contain user-data and meta-data)
 CLOUD_DIR="./cloud-init"
-
-# Parameters (defaults if empty)
-VCPUS="${1:-2}"
-RAM_MB="${2:-4096}"
-
-# You can override the source image via env var if you want a different build/arch.
-# Default is Ubuntu 24.04 LTS (Noble) amd64 cloud image.
+DISK_SIZE="40G"  # Definindo o tamanho mínimo solicitado
 CLOUD_IMG_URL="${CLOUD_IMG_URL:-https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img}"
 
-echo "VM configuration:"
-echo "  Name:    $VM_NAME"
-echo "  vCPUs:   $VCPUS"
-echo "  RAM:     ${RAM_MB} MB"
-echo "  Base QCOW2: $BASE_IMG"
-echo "  Cloud image URL (fallback): $CLOUD_IMG_URL"
+install_dependencies() {
+  echo "Verificando dependencias..."
+  DEPS=(curl qemu-system-x86 libvirt-daemon-system libvirt-clients virtinst cloud-image-utils)
+  for dep in "${DEPS[@]}"; do
+    dpkg -s "$dep" >/dev/null 2>&1 || sudo apt install -y "$dep"
+  done
+}
 
-# --- Check required tools ---
-need_cmd() { command -v "$1" >/dev/null 2>&1 || { echo "Missing required command: $1" >&2; exit 1; }; }
-need_cmd curl
-need_cmd qemu-img
-need_cmd cloud-localds
-need_cmd sudo
-need_cmd virt-install
-need_cmd virsh
+install_dependencies
 
-# --- Ensure base image exists or download/convert it ---
+VCPUS="${1:-2}"
+RAM_MB="${2:-4096}"
+OPTIMIZED=false
+
+for arg in "$@"; do
+  [[ "$arg" == "-optimized" ]] && OPTIMIZED=true
+done
+
 if [[ ! -f "$BASE_IMG" ]]; then
-  echo "Base image '$BASE_IMG' not found. Downloading cloud image..."
-  TMP_IMG="$(mktemp)"
-  # Download (follow redirects, fail on HTTP errors)
+  echo "Baixando imagem base..."
+  TMP_IMG=$(mktemp)
   curl -L --fail -o "$TMP_IMG" "$CLOUD_IMG_URL"
-
-  echo "Converting downloaded image to qcow2: $BASE_IMG"
-  # Convert to qcow2 regardless of source format
   qemu-img convert -O qcow2 "$TMP_IMG" "$BASE_IMG"
   rm -f "$TMP_IMG"
-
-  # Optional: show info
-  echo "Base image ready:"
-  qemu-img info "$BASE_IMG" || true
 fi
 
-# --- Check for required cloud-init files ---
-if [[ ! -f "$CLOUD_DIR/user-data" ]]; then
-  echo "Missing file: $CLOUD_DIR/user-data"
-  exit 1
-fi
+mkdir -p "$CLOUD_DIR"
+touch "$CLOUD_DIR/meta-data"
 
-if [[ ! -f "$CLOUD_DIR/meta-data" ]]; then
-  echo "Missing file: $CLOUD_DIR/meta-data"
-  exit 1
-fi
-
-# --- Generate seed ISO ---
-echo "Generating cloud-init seed ISO..."
+echo "Gerando seed ISO..."
 cloud-localds "$CLOUD_DIR/seed.iso" "$CLOUD_DIR/user-data" "$CLOUD_DIR/meta-data"
 
-# --- Copy base image and seed ISO to libvirt images directory ---
-echo "Copying images to $IMG_DIR ..."
+echo "Preparando disco de $DISK_SIZE..."
 sudo cp "$BASE_IMG" "$IMG_DIR/${VM_NAME}.qcow2"
+# Redimensiona o arquivo de disco antes de criar a VM
+sudo qemu-img resize "$IMG_DIR/${VM_NAME}.qcow2" "$DISK_SIZE"
 sudo cp "$CLOUD_DIR/seed.iso" "$IMG_DIR/${VM_NAME}-seed.iso"
 
-# --- Run virt-install ---
-echo "Creating VM with virt-install..."
+if [ "$OPTIMIZED" = true ]; then
+  CPU_OPTS="host-passthrough,cache.mode=passthrough"
+  DISK_OPTS="path=${IMG_DIR}/${VM_NAME}.qcow2,format=qcow2,bus=virtio,cache=none,io=native"
+else
+  CPU_OPTS="host-model"
+  DISK_OPTS="path=${IMG_DIR}/${VM_NAME}.qcow2,format=qcow2,bus=virtio"
+fi
+
 sudo virt-install \
   --name "$VM_NAME" \
   --ram "$RAM_MB" \
   --vcpus "$VCPUS" \
-  --disk path=${IMG_DIR}/${VM_NAME}.qcow2,format=qcow2 \
+  --cpu "$CPU_OPTS" \
+  --disk "$DISK_OPTS" \
   --disk path=${IMG_DIR}/${VM_NAME}-seed.iso,device=cdrom \
   --os-variant ubuntu24.04 \
-  --network network=default \
+  --network network=default,model=virtio \
   --import \
   --graphics none \
-  --noautoconsole 
+  --noautoconsole \
+  --check all=off
 
-echo "VM $VM_NAME created successfully with $VCPUS vCPUs and ${RAM_MB} MB RAM."
-echo "Waiting for IP address..."
-
-# --- Poll for IP (with or without QEMU guest agent) ---
-for i in {1..20}; do
-  IP_LINE=$(sudo virsh domifaddr "$VM_NAME" --source agent 2>/dev/null | grep ipv4 || true)
-  if [[ -z "$IP_LINE" ]]; then
-    IP_LINE=$(sudo virsh domifaddr "$VM_NAME" 2>/dev/null | grep ipv4 || true)
-  fi
-
-  if [[ -n "$IP_LINE" ]]; then
-    IP=$(echo "$IP_LINE" | awk '{print $4}' | cut -d'/' -f1)
-    echo "VM IP address: $IP"
-    exit 0
-  fi
-
-  sleep 3
-done
-
-echo "Could not determine VM IP (network or cloud-init not ready)."
-exit 1
-
+echo "VM $VM_NAME pronta com $DISK_SIZE de disco."
